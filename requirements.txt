@@ -1,0 +1,19 @@
+# Data processing
+pandas
+numpy
+holidays
+
+# Visualization
+matplotlib
+seaborn
+plotly
+
+# Modeling and tuning
+scikit-learn
+xgboost
+statsmodels
+optuna
+
+# Notebook execution and Plotly rendering
+ipykernel
+nbformat>=4.2.0

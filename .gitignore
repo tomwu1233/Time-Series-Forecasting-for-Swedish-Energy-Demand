@@ -1,0 +1,15 @@
+# Local Python environments
+.venv/
+.venv-win/
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Local environment variables
+.env
+.env.*
+!.env.example
