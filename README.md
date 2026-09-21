@@ -25,9 +25,22 @@ Hydro and nuclear make up the largest combined contribution among the four plott
 
 These summaries adapt the observations in the visualization notebook. See the [year-by-year hourly profiles](docs/figures/hourly-demand-by-year.png) and [2024 demand seasonality figure](docs/figures/demand-seasonality.png) for further detail. Figures are exported from saved notebook outputs; annual averages above were checked against the cleaned CSV.
 
-## Forecasting results
+## Modeling approach and validation
 
 The cleaned dataset contains **31,176 hourly observations** from January 2022 through July 22, 2025. [Model_Training.ipynb](Model_Training.ipynb) retains **30,456 rows** after creating demand lags up to 720 hours and dropping missing rows. The first **24,364 rows (80%)** form the development set; the last **6,092 rows (20%)**, from November 11, 2024 at 04:00 UTC through July 22, 2025, form the test set.
+
+- **Demand and calendar features:** demand lags of 24, 48, 168, 336, and 720 hours; hour, day of month, weekday, and month; sine/cosine encodings of hour and month; weekend, winter, summer, and Swedish holiday flags. Short demand lags and unshifted rolling statistics are excluded from the current feature list.
+- **Generation features:** `Other`, `Hydro Water Reservoir`, `Nuclear`, `Wind Onshore`, and `Solar`. The combined model uses both feature groups.
+- **Optuna validation:** 30 trials, each evaluated with `TimeSeriesSplit(n_splits=5)` on development data only. Training expands across folds, and each trial returns mean validation MAE. This makes 150 model fits during tuning.
+- **Final fit:** the best settings are used to retrain on all development rows before predicting the final test period. The saved best mean validation MAE is **614.86 MW**, distinct from the final test MAE of **620.78 MW**.
+
+Optuna searches `n_estimators` (100–500), `max_depth` (3–15), `learning_rate` (0.01–0.3), `subsample` and `colsample_bytree` (0.6–1.0), `gamma` (0–5), and `min_child_weight` (1–10). XGBoost's `random_state` is fixed at 42. The notebook includes plots of actual demand and predictions over the first 200 test hours for each initial model.
+
+![Development and test split with five time-series validation folds on a shared calendar-date axis](docs/figures/time-series-validation.png)
+
+*Both panels share a calendar-date axis. The top panel shows the first 80% of observations as development data (gray) and the final 20% as test data (orange). Below, each fold uses an expanding training window (blue) followed by a validation window (purple). Blank areas within the development period are unused in that fold. The dashed line marks the start of the final test period, shaded orange below to show that it is excluded from tuning.*
+
+## Forecasting results
 
 The saved notebook outputs report the following scores on that test period:
 
@@ -40,14 +53,9 @@ The saved notebook outputs report the following scores on that test period:
 
 Tuning reduced combined-model test MAE by approximately **0.42%**. These are exploratory model results: generation-based models use actual target-hour generation, and forecast issue times are not yet enforced. They do not establish deployable day-ahead performance.
 
-### Features and validation
+![Total Demand Forecast With Combined Features: actual and predicted demand over the first 200 test hours](docs/figures/combined-features-forecast.png)
 
-- **Demand and calendar features:** demand lags of 24, 48, 168, 336, and 720 hours; hour, day of month, weekday, and month; sine/cosine encodings of hour and month; weekend, winter, summer, and Swedish holiday flags. Short demand lags and unshifted rolling statistics are excluded from the current feature list.
-- **Generation features:** `Other`, `Hydro Water Reservoir`, `Nuclear`, `Wind Onshore`, and `Solar`. The combined model uses both feature groups.
-- **Optuna validation:** 30 trials, each evaluated with `TimeSeriesSplit(n_splits=5)` on development data only. Training expands across folds, and each trial returns mean validation MAE. This makes 150 model fits during tuning.
-- **Final fit:** the best settings are used to retrain on all development rows before predicting the final test period. The saved best mean validation MAE is **614.86 MW**, distinct from the final test MAE of **620.78 MW**.
-
-Optuna searches `n_estimators` (100–500), `max_depth` (3–15), `learning_rate` (0.01–0.3), `subsample` and `colsample_bytree` (0.6–1.0), `gamma` (0–5), and `min_child_weight` (1–10). XGBoost's `random_state` is fixed at 42. The notebook includes plots of actual demand and predictions over the first 200 test hours for each initial model.
+*Total Demand Forecast With Combined Features: the initial XGBoost model before Optuna tuning, using demand/calendar and generation features. This saved notebook plot shows the first 200 test hours; its full-test MAE is 623.40 MW and R? is 0.9331. The forecast-time limitations above also apply to this plot.*
 
 ## What I built
 
