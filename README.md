@@ -1,110 +1,108 @@
-# Sweden Day-Ahead Electricity Demand Forecasting
+# Swedish SE3 Electricity Demand Forecasting
 
-An exploratory machine learning project focused on **day-ahead forecasting of Sweden's hourly electricity demand** using historical load, generation, and calendar patterns. The goal is to predict the next day's hourly demand profile. It demonstrates the workflow from raw CSV cleaning and visualization to XGBoost training and hyperparameter tuning, with forecast-time availability still to be enforced in the evaluation.
+A trained time-series model for forecasting electricity consumption in Sweden’s SE3 bidding zone.
 
-## What the data shows
+## 1. Study objective
 
-The [visualization notebook](Data_Visualisation.ipynb) explores both electricity demand and changes in generation:
+This project investigates the use of historical electricity demand and external weather variables to forecast total electricity consumption in the Swedish SE3 bidding zone.
 
-- **Strong seasonality:** demand is higher in winter and lower in summer, visible across hourly, daily, weekly, and monthly views.
-- **A recurring daily pattern:** across 2022–2024, average demand is lowest around 02:00 UTC and highest around 16:00 UTC. This supports using hour-of-day features and daily lags.
-- **A modest demand dip and recovery:** annual mean demand was 15,082 MW in 2022, 14,911 MW in 2023, and 15,011 MW in 2024.
-- **Growing wind and solar output:** between 2022 and 2024, mean onshore wind generation rose from 3,739 to 4,592 MW (about 23%), while solar rose from 94 to 211 MW (about 124%). These describe the supplied dataset; they do not establish what caused the changes.
+The objectives are to:
 
-![Daily hourly electricity demand in Sweden, with individual days and the mean profile](docs/figures/daily-hourly-demand.png)
+- Build a reproducible electricity-demand forecasting pipeline.
+- Create useful time-series and weather-based features.
+- Train an XGBoost regression model.
+- Tune the model using Optuna.
+- Evaluate the final model on unseen future data.
 
-*Each faint line represents one day from January 2022 through July 22, 2025; the red dashed line shows the average. Hours are UTC.*
+## 2. Data
 
-Demand is lowest in the early morning, rises sharply through the morning, dips slightly around midday, and reaches its average peak around 16:00 UTC before declining overnight. The spread of daily curves shows how much demand varies around this recurring pattern. Across the year, the notebook's time-series and smoothed plots show higher winter demand and lower summer demand. Together, these observations motivate daily lags and calendar features in the forecasting model.
+The project uses:
 
-![Monthly average generation by source in 2022 and 2024](docs/figures/generation-mix.png)
+- Historical electricity consumption for the Swedish SE3 bidding zone.
+- External weather observations corresponding to the study period.
+- Time-series features derived from the demand data, including lagged and calendar-based variables.
 
-*Monthly mean power (MW) for four selected generation sources, not monthly energy totals or the entire generation mix.*
+The data is organized chronologically, with training observations preceding validation and test observations.
 
-Hydro and nuclear make up the largest combined contribution among the four plotted sources, while wind and solar output increased between 2022 and 2024. The monthly comparison also shows seasonal variation in the generation mix.
+**Study period:** The saved training notebook contains 73,032 hourly observations from March 2, 2018 through June 30, 2026. See the date ranges printed in [03_model_training.ipynb](03_model_training.ipynb) for the current run.
 
-These summaries adapt the observations in the visualization notebook. See the [year-by-year hourly profiles](docs/figures/hourly-demand-by-year.png) and [2024 demand seasonality figure](docs/figures/demand-seasonality.png) for further detail. Figures are exported from saved notebook outputs; annual averages above were checked against the cleaned CSV.
+**Target variable:** `total_consumption`, measured in MWh.
 
-## Modeling approach and validation
+## 3. General approach
 
-The cleaned dataset contains **31,176 hourly observations** from January 2022 through July 22, 2025. [Model_Training.ipynb](Model_Training.ipynb) retains **30,456 rows** after creating demand lags up to 720 hours and dropping missing rows. The first **24,364 rows (80%)** form the development set; the last **6,092 rows (20%)**, from November 11, 2024 at 04:00 UTC through July 22, 2025, form the test set.
+The workflow consists of three stages:
 
-- **Demand and calendar features:** demand lags of 24, 48, 168, 336, and 720 hours; hour, day of month, weekday, and month; sine/cosine encodings of hour and month; weekend, winter, summer, and Swedish holiday flags. Short demand lags and unshifted rolling statistics are excluded from the current feature list.
-- **Generation features:** `Other`, `Hydro Water Reservoir`, `Nuclear`, `Wind Onshore`, and `Solar`. The combined model uses both feature groups.
-- **Optuna validation:** 30 trials, each evaluated with `TimeSeriesSplit(n_splits=5)` on development data only. Training expands across folds, and each trial returns mean validation MAE. This makes 150 model fits during tuning.
-- **Final fit:** the best settings are used to retrain on all development rows before predicting the final test period. The saved best mean validation MAE is **614.86 MW**, distinct from the final test MAE of **620.78 MW**.
+1. **Preprocessing:** Cleaning and preparing the electricity-demand and weather data.
+2. **Feature engineering:** Creating time-series, calendar, lagged-demand, and weather features.
+3. **Model training and evaluation:** Training and tuning an XGBoost regression model and evaluating it on a final held-out test period.
 
-Optuna searches `n_estimators` (100–500), `max_depth` (3–15), `learning_rate` (0.01–0.3), `subsample` and `colsample_bytree` (0.6–1.0), `gamma` (0–5), and `min_child_weight` (1–10). XGBoost's `random_state` is fixed at 42. The notebook includes plots of actual demand and predictions over the first 200 test hours for each initial model.
+The data is split chronologically:
 
-![Development and test split with five time-series validation folds on a shared calendar-date axis](docs/figures/time-series-validation.png)
+- **80% development data:** 58,425 observations in the saved run.
+- **20% final test data:** 14,607 observations in the saved run.
 
-*Both panels share a calendar-date axis. The top panel shows the first 80% of observations as development data (gray) and the final 20% as test data (orange). Below, each fold uses an expanding training window (blue) followed by a validation window (purple). Blank areas within the development period are unused in that fold. The dashed line marks the start of the final test period, shaded orange below to show that it is excluded from tuning.*
+Five-fold `TimeSeriesSplit` cross-validation is performed only on the development data. Each fold uses an expanding training window followed by a validation window. The final test set is excluded from hyperparameter tuning.
 
-## Forecasting results
+![Chronological data split and time-series cross-validation](docs/figures/time_series_split.png)
 
-The saved notebook outputs report the following scores on that test period:
+## 4. Model training
 
-| Model | MAE (MW, lower is better) | R² |
-|---|---:|---:|
-| XGBoost: demand lags and calendar features | 634.96 | 0.9310 |
-| XGBoost: generation features only | 1102.52 | 0.8093 |
-| XGBoost: combined features | 623.40 | 0.9331 |
-| XGBoost: combined features, Optuna tuning | 620.78 | 0.9332 |
+The forecasting model is `XGBRegressor`.
 
-Tuning reduced combined-model test MAE by approximately **0.42%**. These are exploratory model results: generation-based models use actual target-hour generation, and forecast issue times are not yet enforced. They do not establish deployable day-ahead performance.
+Optuna is used for hyperparameter optimization. For every Optuna trial:
 
-![Total Demand Forecast With Combined Features: actual and predicted demand over the first 200 test hours](docs/figures/combined-features-forecast.png)
+1. An XGBoost model is created with the suggested parameters.
+2. Five-fold time-series cross-validation is performed on the development data.
+3. The mean validation MAE is calculated.
+4. Optuna minimizes the mean validation MAE.
 
-*Total Demand Forecast With Combined Features: the initial XGBoost model before Optuna tuning, using demand/calendar and generation features. This saved notebook plot shows the first 200 test hours; its full-test MAE is 623.40 MW and R? is 0.9331. The forecast-time limitations above also apply to this plot.*
+The notebook runs 100 trials. The best hyperparameters are then used to train the final model on all development data, followed by evaluation on the held-out 20% test period.
 
-## What I built
+## 5. Final test results
 
-- Combined yearly demand and generation CSVs, aligned timestamps, removed duplicates, and handled missing values.
-- Compared demand/calendar, generation-only, and combined feature sets for XGBoost.
-- Separated development and test periods chronologically and tuned with five-fold time-series validation using Optuna.
-- Evaluated initial and tuned XGBoost models using test-period MAE and R².
-- Visualized demand and generation patterns with Matplotlib, Seaborn, and Plotly.
+The final model is evaluated using Mean Absolute Error (MAE), Root Mean Squared Error (RMSE), and the coefficient of determination (R²).
 
-**Tools:** Python, pandas, NumPy, scikit-learn, XGBoost, Optuna, Matplotlib, Seaborn, and Plotly.
+The saved output in [03_model_training.ipynb](03_model_training.ipynb) reports:
 
-## Explore the project
+| Metric | Score |
+|---|---:|
+| MAE (MWh) | 208.39 |
+| RMSE (MWh) | 281.15 |
+| R² | 0.9773 |
 
-| File | Purpose |
-|---|---|
-| [Sweden_Energy_Demand_Forecast.ipynb](Sweden_Energy_Demand_Forecast.ipynb) | Data preparation and export of the cleaned CSV |
-| [Model_Training.ipynb](Model_Training.ipynb) | Feature comparisons, time-series cross-validation, Optuna tuning, and test evaluation |
-| [Data_Visualisation.ipynb](Data_Visualisation.ipynb) | Exploration of the cleaned energy data |
-| `data/raw/` | Yearly demand and generation CSVs for 2022–2025 |
-| `data/clean/Cleaned_Sweden_Energy.csv` | Cleaned dataset produced by the forecasting notebook |
-| [requirements.txt](requirements.txt) | Python dependencies |
+The saved final test period runs from October 30, 2024 at 09:00 through June 30, 2026 at 23:00. The following figure compares actual and predicted consumption for its first 200 hours.
 
-The raw data includes actual load, day-ahead load forecasts, and generation by production type. Timestamps are labeled UTC in the input files. Original download provenance and redistribution terms still need to be documented.
+![Actual versus predicted SE3 consumption](docs/figures/test_predictions.png)
 
-## Run locally
+Scores and figures reflect the saved notebook run; rerunning optimization may produce different results.
 
-Local environment used: **Python 3.12.3**, Windows, and VS Code with the Python and Jupyter extensions.
+## 6. Repository structure
 
-From the repository root, create an environment and install dependencies:
+- [01_preprocessing.ipynb](01_preprocessing.ipynb) — Cleans and prepares the demand and weather data.
+- [02_feature_engineering.ipynb](02_feature_engineering.ipynb) — Creates time-series and weather-based features.
+- [03_model_training.ipynb](03_model_training.ipynb) — Performs Optuna tuning, trains the final XGBoost model, and evaluates test performance.
+- `data/` — Input and processed datasets used by the notebooks, including `data/training/selected_features.csv` for model training.
+- [requirements.txt](requirements.txt) — Python dependencies.
+- `docs/figures/` — Figures used in this README, exported from saved notebook outputs.
 
-```cmd
-python -m venv .venv-win
-.venv-win\Scripts\python.exe -m pip install -r requirements.txt
+## 7. How to run
+
+From the repository root, install the project dependencies and Jupyter:
+
+```bash
+python -m pip install -r requirements.txt jupyter
 ```
 
-1. Ensure `data/raw/` contains `Demand_2022.csv` through `Demand_2025.csv` and `GenerationType_2022.csv` through `GenerationType_2025.csv`.
-2. Create `data/clean/` if it is missing; the notebook writes its cleaned CSV there.
-3. Open `Sweden_Energy_Demand_Forecast.ipynb`, select `.venv-win` as the kernel, and run the data-preparation cells through the cleaned CSV export from the repository root.
-4. Open `Model_Training.ipynb` with the same kernel environment. Restart its kernel and run all cells in order. Its feature cell removes `forecast` from `df`, so rerunning that cell alone requires first reloading the CSV. The Optuna section runs 30 trials across five folds.
-5. Run `Data_Visualisation.ipynb` to explore the cleaned data.
+Start Jupyter:
 
-The table above comes from saved notebook outputs. Most dependency versions and the Optuna sampler are not pinned, so reruns may produce different results.
+```bash
+jupyter notebook
+```
 
-## Evaluation notes and next steps
+Ensure the demand and weather inputs referenced by the preprocessing notebook are available, then run the notebooks in order:
 
-The current notebook is an analysis prototype. Before using its metrics to assess forecasting performance:
+1. Run `01_preprocessing.ipynb` to prepare the data.
+2. Run `02_feature_engineering.ipynb` to create the model features.
+3. Run `03_model_training.ipynb` to tune, train, and evaluate the model.
 
-- **Enforce forecast-time availability:** actual target-hour generation is not available a day ahead. Replace it with forecasts available at issue time, lag it appropriately, or omit it. A 24-hour demand lag can support a rolling 24-hour-ahead prediction if measurements are available, but may be unavailable for some hours when forecasting all of tomorrow at a fixed time today. Training cutoffs and validation gaps must also reflect the forecast issue time.
-- **Preserve an independent final evaluation:** Optuna now uses only development folds, but the final period is also inspected in feature comparisons and earlier experiments. Reserve a later, unused period for a final assessment after model and feature choices are fixed. Add daily and weekly seasonal-naive baselines.
-- **Check feature quality and time alignment:** confirm chronological, equally spaced hourly data before row-based lagging and splitting; validate holiday flags and local-calendar handling; review generation values filled with zero during cleaning.
-
-The current comparison plot and metrics use test rows only. Earlier results and the existing `docs/figures/demand-prediction.png` come from the previous modeling setup and are not used as evidence for the current results. Automated tests and deployment are not yet included.
+Use the same Python environment as the notebook kernel and run each notebook’s cells from top to bottom.
