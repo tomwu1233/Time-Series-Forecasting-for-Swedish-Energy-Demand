@@ -1,19 +1,23 @@
-# Data processing
-pandas
-numpy
+# Data access and file formats
+cdsapi
+xlrd
+
+# Data processing and calendar features
 holidays
+numpy
+pandas
 
 # Visualization
 matplotlib
 seaborn
-plotly
 
-# Modeling and tuning
+# Modeling and hyperparameter tuning
+optuna
 scikit-learn
 xgboost
-statsmodels
-optuna
 
-# Notebook execution and Plotly rendering
+# Notebook execution and display
 ipykernel
+ipython
+jupyter
 nbformat>=4.2.0
